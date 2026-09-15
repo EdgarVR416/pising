@@ -1,0 +1,13 @@
+{
+  "name": "vt-hop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TikTok-styled capture server: click hop, fingerprint, geolocation, camera frames",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

